@@ -206,7 +206,10 @@ func startRouteSearch(origin string, dest string) (string, error) {
 
 	checkedAirports[origin] = true
 	getShortestRoute(origin, dest, nil, &shortestPath, checkedAirports, &distance)
-	fmt.Println("shortest route: ", shortestPath.Path, " distance: ", shortestPath.Distance)
+	log.Println("shortest route: ", shortestPath.Path, " distance: ", shortestPath.Distance)
+	if len(shortestPath.Path) <= 0 {
+		return "", errors.New("Invalid route")
+	}
 	return shortestPath.Path, nil
 }
 
