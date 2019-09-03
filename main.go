@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -94,11 +95,10 @@ func importData(dataFilePath string) error {
 	return nil
 }
 
+var leastValidLayer = math.MaxInt32
+
 //initializes and starts executes the search
 func startRouteSearch(origin string, dest string) (string, error) {
-	checkedAirports := make(map[string]bool)  //airports which were already checked
-	shortestPath := PathDistancePair{"", 0.0} //valid paths
-	distance := 0.0                           //distance for current path
 	if origin == dest {
 		return "", errors.New("Origin and destination are the same")
 	} else if _, ok := airports[origin]; !ok {
@@ -106,14 +106,17 @@ func startRouteSearch(origin string, dest string) (string, error) {
 	} else if _, ok := airports[dest]; !ok {
 		return "", errors.New("Invalid dest airport")
 	}
-
-	checkedAirports[origin] = true
-	getShortestRoute(origin, dest, nil, &shortestPath, checkedAirports, &distance)
-	log.Println("shortest route: ", shortestPath.Path, " distance: ", shortestPath.Distance)
-	if len(shortestPath.Path) <= 0 {
+	leastValidLayer = math.MaxInt32
+	startTime := time.Now()
+	fmt.Println("****************search started ****************************")
+	shortestPath := getShortestRoute(origin, dest, origin, nil, 0)
+	endTime := time.Now()
+	fmt.Println("****************search ended: ", endTime.Sub(startTime)*time.Nanosecond, "ms****************************")
+	fmt.Println("shortestPath: ", shortestPath)
+	if len(shortestPath) <= 0 {
 		return "", errors.New("Invalid route")
 	}
-	return shortestPath.Path, nil
+	return shortestPath, nil
 }
 
 func convertStringArrayToOutputString(path []string) string {
@@ -132,43 +135,35 @@ func convertStringArrayToOutputString(path []string) string {
 //Recursively check all path from origin to dest
 //Returns immediately if neighbour is destination or distance is greater than stored shortest distance
 //Skips checking if current node was already checked
-func getShortestRoute(origin string, dest string, currentPath []string, shortestPath *PathDistancePair, checked map[string]bool, distance *float64) error {
-	originAirport := airports[origin]
-	connectedAirports := originAirport.ConnectedAirports
-	entryCount := 0
+func getShortestRoute(start string, dest string, origin string, currentPath []string, layer int) string {
+	startAirports := airports[start]
+	connectedAirports := startAirports.ConnectedAirports
 	if currentPath == nil {
 		currentPath = make([]string, 0)
 	}
-	currentPath = append(currentPath, origin)
-	//check if dest are neigbours
-	for k, v := range connectedAirports {
-		entryCount++
-		if k == dest {
-			totalDistance := *distance + v
-			if shortestPath.Distance == 0.0 || totalDistance < shortestPath.Distance {
-				currentPath = append(currentPath, k)
-				key := convertStringArrayToOutputString(currentPath)
-				shortestPath.Path = key
-				shortestPath.Distance = totalDistance
-			}
-			currentPath = make([]string, 0)
-			return nil
+	currentPath = append(currentPath, start)
+	//check for direct flight. assume it will always be the shortest
+	if _, found := connectedAirports[dest]; found {
+		if layer < leastValidLayer {
+			leastValidLayer = layer
+		}
+		return convertStringArrayToOutputString(append(currentPath, dest))
+	}
+
+	//Already longer or equal to shortest result. Skip searching
+	if layer+1 >= leastValidLayer {
+		return ""
+	}
+
+	var ret = ""
+	for key := range connectedAirports {
+		result := getShortestRoute(key, dest, origin, currentPath, layer+1)
+		if len(result) > 0 {
+			//fmt.Println(ret)
+			ret = result
 		}
 	}
-	checked[origin] = true
-	//recurse through neighbours
-	for k, v := range connectedAirports {
-		currentDistance := 0.0
-		// keep going
-		currentDistance += *distance + v
-		if shortestPath.Distance == 0.0 || currentDistance < shortestPath.Distance {
-			if _, ok := checked[k]; !ok {
-				getShortestRoute(k, dest, currentPath, shortestPath, checked, &currentDistance)
-			}
-		}
-	}
-	checked = make(map[string]bool)
-	return nil
+	return ret
 }
 
 func main() {
@@ -204,7 +199,7 @@ func main() {
 			origin := r.URL.Query()["origin"]
 			destination := r.URL.Query()["destination"]
 			if len(origin[0]) <= 0 || len(destination[0]) <= 0 {
-				fmt.Fprintf(w, "Invalid origin or destination parameters")
+				fmt.Fprintln(w, "Invalid origin or destination parameters")
 			} else {
 				var result string
 				var err error
