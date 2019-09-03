@@ -96,6 +96,7 @@ func importData(dataFilePath string) error {
 }
 
 var leastValidLayer = math.MaxInt32
+var checkedAirports map[string]int
 
 //initializes and starts executes the search
 func startRouteSearch(origin string, dest string) (string, error) {
@@ -107,6 +108,7 @@ func startRouteSearch(origin string, dest string) (string, error) {
 		return "", errors.New("Invalid dest airport")
 	}
 	leastValidLayer = math.MaxInt32
+	checkedAirports = make(map[string]int, 0)
 	startTime := time.Now()
 	fmt.Println("****************search started ****************************")
 	shortestPath := getShortestRoute(origin, dest, origin, nil, 0)
@@ -147,6 +149,7 @@ func getShortestRoute(start string, dest string, origin string, currentPath []st
 		if layer < leastValidLayer {
 			leastValidLayer = layer
 		}
+		checkedAirports[start] = leastValidLayer
 		return convertStringArrayToOutputString(append(currentPath, dest))
 	}
 
@@ -155,12 +158,23 @@ func getShortestRoute(start string, dest string, origin string, currentPath []st
 		return ""
 	}
 
+	//Already longer or equal to shortest result. Skip searching
+	if checkedLayer, found := checkedAirports[start]; found {
+		if layer >= checkedLayer {
+			return ""
+		}
+	} else {
+		checkedAirports[start] = layer
+	}
+
 	var ret = ""
 	for key := range connectedAirports {
 		result := getShortestRoute(key, dest, origin, currentPath, layer+1)
 		if len(result) > 0 {
-			//fmt.Println(ret)
 			ret = result
+		}
+		if layer < checkedAirports[key] {
+			checkedAirports[key] = layer
 		}
 	}
 	return ret
